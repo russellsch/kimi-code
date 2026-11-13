@@ -287,6 +287,8 @@ describe('ReadMediaFileTool', () => {
       }
       expect(delivered.getPixelColor(31, 31)).toBe(0x808080ff);
       expect(noteText(result)).toContain('Original pixels begin at (0, 0)');
+      expect(noteText(result)).toContain('Convert relative coordinates using the delivered canvas dimensions');
+      expect(noteText(result)).not.toContain('compute absolute coordinates using the original image size');
     }
   });
 

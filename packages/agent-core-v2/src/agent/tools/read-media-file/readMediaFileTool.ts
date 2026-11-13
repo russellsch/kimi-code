@@ -104,10 +104,11 @@ function buildMediaNote(input: {
   if (delivery?.padded) {
     parts.push(
       `The delivered image is padded to ${String(delivery.width)}x${String(delivery.height)} pixels. ` +
-      'Original pixels begin at (0, 0); padding is only on the right and bottom.',
+      'Original pixels begin at (0, 0); padding is only on the right and bottom. ' +
+      'Convert relative coordinates using the delivered canvas dimensions, then ignore coordinates in the padding.',
     );
   }
-  if (input.kind === 'image' && input.dimensions && delivery?.kind !== 'crop') {
+  if (input.kind === 'image' && input.dimensions && delivery?.kind !== 'crop' && !delivery?.padded) {
     parts.push(
       'If you need to output coordinates, output relative coordinates first ' +
         'and compute absolute coordinates using the original image size.',
