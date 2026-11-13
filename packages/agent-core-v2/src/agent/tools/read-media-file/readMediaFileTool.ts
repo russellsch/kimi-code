@@ -20,10 +20,12 @@ import {
 } from '#/agent/media/file-type';
 import {
   MAX_IMAGE_DECODE_BYTES,
+  MIN_MODEL_IMAGE_EDGE_PX,
   compressImageForModel,
   cropImageForModel,
   formatByteSize,
   isRecodableImage,
+  padSmallImageForModel,
   resolveMaxImageEdgePx,
   resolveReadImageByteBudget,
   type ImageCropRegion,
@@ -55,6 +57,7 @@ interface ImageDelivery {
   readonly mimeType: string;
   readonly region?: ImageCropRegion;
   readonly resized?: boolean;
+  readonly padded?: boolean;
 }
 
 function buildMediaNote(input: {
@@ -97,6 +100,12 @@ function buildMediaNote(input: {
     );
   } else if (delivery?.kind === 'full') {
     parts.push('Shown at native resolution; no downscaling applied.');
+  }
+  if (delivery?.padded) {
+    parts.push(
+      `The delivered image is padded to ${String(delivery.width)}x${String(delivery.height)} pixels. ` +
+      'Original pixels begin at (0, 0); padding is only on the right and bottom.',
+    );
   }
   if (input.kind === 'image' && input.dimensions && delivery?.kind !== 'crop') {
     parts.push(
@@ -407,6 +416,34 @@ export class ReadMediaFileTool implements AgentTool<ReadMediaFileInput> {
       } else {
         mediaBytes = data;
         mediaMimeType = fileType.mimeType;
+      }
+
+      if (fileType.kind === 'image') {
+        const deliveredDimensions = sniffImageDimensions(mediaBytes);
+        if (
+          deliveredDimensions !== null &&
+          (deliveredDimensions.width < MIN_MODEL_IMAGE_EDGE_PX ||
+            deliveredDimensions.height < MIN_MODEL_IMAGE_EDGE_PX)
+        ) {
+          if (!isRecodableImage(mediaBytes, mediaMimeType)) {
+            return { isError: true, output: `Cannot pad "${args.path}" safely. The image was not sent to the model.` };
+          }
+          const padded = await padSmallImageForModel(mediaBytes, mediaMimeType);
+          if (padded.data.length > imageDeliveryLimits.readByteBudget) {
+            return { isError: true, output: `Padded image exceeds the per-image byte limit. The image was not sent to the model.` };
+          }
+          mediaBytes = padded.data;
+          mediaMimeType = 'image/png';
+          delivery = {
+            ...delivery,
+            kind: delivery?.kind ?? 'untouched',
+            width: padded.width,
+            height: padded.height,
+            byteLength: padded.data.length,
+            mimeType: 'image/png',
+            padded: true,
+          };
+        }
       }
 
       const reference = await this.attachmentStore.put({

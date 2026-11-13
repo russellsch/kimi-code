@@ -261,6 +261,47 @@ function noteText(result: ExecutableToolResult): string {
 }
 
 describe('ReadMediaFileTool', () => {
+  it('pads narrow images at the upper left without changing their pixels', async () => {
+    const original = new Jimp({ width: 14, height: 24, color: 0x17385aff });
+    original.setPixelColor(0xd04020ff, 13, 23);
+    const bytes = Buffer.from(await original.getBuffer('image/png'));
+    const store = testMediaStore();
+    const tool = makeTool({ '/workspace/narrow.png': { data: bytes } }, undefined, store);
+
+    for (const args of [
+      { path: '/workspace/narrow.png' },
+      { path: '/workspace/narrow.png', full_resolution: true },
+      { path: '/workspace/narrow.png', region: { x: 0, y: 0, width: 10, height: 12 } },
+    ]) {
+      const result = await execute(tool, args);
+      const stored = await store.get(mediaUrl(outputParts(result)[1]));
+      expect(stored?.mimeType).toBe('image/png');
+      const delivered = await Jimp.fromBuffer(Buffer.from(stored!.bytes));
+      expect([delivered.width, delivered.height]).toEqual([32, 32]);
+      const expectedWidth = 'region' in args ? 10 : 14;
+      const expectedHeight = 'region' in args ? 12 : 24;
+      for (let y = 0; y < expectedHeight; y += 1) {
+        for (let x = 0; x < expectedWidth; x += 1) {
+          expect(delivered.getPixelColor(x, y)).toBe(original.getPixelColor(x, y));
+        }
+      }
+      expect(delivered.getPixelColor(31, 31)).toBe(0x808080ff);
+      expect(noteText(result)).toContain('Original pixels begin at (0, 0)');
+    }
+  });
+
+  it('does not attach a narrow image when padding cannot decode it', async () => {
+    const store = testMediaStore();
+    const put = vi.spyOn(store, 'put');
+    const result = await execute(
+      makeTool({ '/workspace/broken.png': { data: pngBuffer(14, 24) } }, undefined, store),
+      { path: '/workspace/broken.png' },
+    );
+
+    expect(result.isError).toBe(true);
+    expect(put).not.toHaveBeenCalled();
+  });
+
   it('has name, parameters, and a path-scoped read access', async () => {
     const tool = makeTool({ '/workspace/sample.png': { data: pngBuffer() } });
 
@@ -470,12 +511,7 @@ describe('ReadMediaFileTool', () => {
   });
 
   it('does not claim downsampling for an image sent untouched', async () => {
-    const png = Buffer.from(
-      '89504e470d0a1a0a0000000d49484452000000030000000408020000003a' +
-        '63dc1c0000001949444154789c63606060f8cf80019aa0a8a020' +
-        '00000000ffff03000c1d03014b0000000049454e44ae426082',
-      'hex',
-    );
+    const png = Buffer.from(await new Jimp({ width: 3, height: 4, color: 0x3366ccff }).getBuffer('image/png'));
     const result = await execute(makeTool({ '/workspace/small.png': { data: png } }), {
       path: '/workspace/small.png',
     });

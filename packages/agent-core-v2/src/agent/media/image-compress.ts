@@ -18,6 +18,26 @@ import {
 import { decodeWebp, isAnimatedWebp } from './webp-decode';
 
 export const MAX_IMAGE_EDGE_PX = 2000;
+export const MIN_MODEL_IMAGE_EDGE_PX = 32;
+
+export async function padSmallImageForModel(
+  bytes: Uint8Array,
+  mimeType: string,
+): Promise<{ data: Uint8Array; width: number; height: number }> {
+  const image = await decodeToJimp(bytes, normalizeImageMime(mimeType));
+  const width = Math.max(MIN_MODEL_IMAGE_EDGE_PX, image.width);
+  const height = Math.max(MIN_MODEL_IMAGE_EDGE_PX, image.height);
+  const { Jimp } = await import('jimp');
+  const canvas = new Jimp({ width, height, color: 0x808080ff });
+  for (let y = 0; y < image.height; y += 1) {
+    const start = y * image.width * 4;
+    canvas.bitmap.data.set(
+      image.bitmap.data.subarray(start, start + image.width * 4),
+      y * width * 4,
+    );
+  }
+  return { data: await canvas.getBuffer('image/png', { deflateLevel: 9 }), width, height };
+}
 
 let configuredMaxImageEdgePx: number | undefined;
 
