@@ -304,6 +304,26 @@ describe('ReadMediaFileTool', () => {
     expect(put).not.toHaveBeenCalled();
   });
 
+  it('rejects a narrow, tall full-resolution image before decoding or storing it', async () => {
+    const store = testMediaStore();
+    const put = vi.spyOn(store, 'put');
+    const decode = vi.spyOn(Jimp, 'fromBuffer');
+    try {
+      const result = await execute(
+        makeTool({ '/workspace/tall.png': { data: pngBuffer(1, 1_000_000) } }, undefined, store),
+        { path: '/workspace/tall.png', full_resolution: true },
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.output).toContain('image allocation budget');
+      expect(result.output).toContain('Use region');
+      expect(decode).not.toHaveBeenCalled();
+      expect(put).not.toHaveBeenCalled();
+    } finally {
+      decode.mockRestore();
+    }
+  });
+
   it('has name, parameters, and a path-scoped read access', async () => {
     const tool = makeTool({ '/workspace/sample.png': { data: pngBuffer() } });
 

@@ -24,6 +24,7 @@ import {
   compressImageForModel,
   cropImageForModel,
   formatByteSize,
+  fitsSmallImagePaddingBudget,
   isRecodableImage,
   padSmallImageForModel,
   resolveMaxImageEdgePx,
@@ -426,6 +427,12 @@ export class ReadMediaFileTool implements AgentTool<ReadMediaFileInput> {
           (deliveredDimensions.width < MIN_MODEL_IMAGE_EDGE_PX ||
             deliveredDimensions.height < MIN_MODEL_IMAGE_EDGE_PX)
         ) {
+          if (!fitsSmallImagePaddingBudget(deliveredDimensions.width, deliveredDimensions.height)) {
+            return {
+              isError: true,
+              output: `Cannot pad "${args.path}": the decoded image and canvas would exceed the image allocation budget. The image was not sent to the model. Use region to read a smaller area.`,
+            };
+          }
           if (!isRecodableImage(mediaBytes, mediaMimeType)) {
             return { isError: true, output: `Cannot pad "${args.path}" safely. The image was not sent to the model.` };
           }

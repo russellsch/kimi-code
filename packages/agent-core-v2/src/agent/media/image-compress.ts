@@ -25,6 +25,9 @@ export async function padSmallImageForModel(
   mimeType: string,
 ): Promise<{ data: Uint8Array; width: number; height: number }> {
   const image = await decodeToJimp(bytes, normalizeImageMime(mimeType));
+  if (!fitsSmallImagePaddingBudget(image.width, image.height)) {
+    throw new RangeError('Decoded image exceeds the padding allocation budget.');
+  }
   const width = Math.max(MIN_MODEL_IMAGE_EDGE_PX, image.width);
   const height = Math.max(MIN_MODEL_IMAGE_EDGE_PX, image.height);
   const { Jimp } = await import('jimp');
@@ -76,6 +79,17 @@ const PNG_RESCALE_FLOOR_PX = 1000;
 const MAX_DECODE_PIXELS = 100_000_000;
 
 export const MAX_IMAGE_DECODE_BYTES = 64 * 1024 * 1024;
+
+export function fitsSmallImagePaddingBudget(width: number, height: number): boolean {
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
+    return false;
+  }
+  const sourcePixels = width * height;
+  const paddedPixels = Math.max(MIN_MODEL_IMAGE_EDGE_PX, width) * Math.max(MIN_MODEL_IMAGE_EDGE_PX, height);
+  return Number.isSafeInteger(sourcePixels) &&
+    Number.isSafeInteger(paddedPixels) &&
+    sourcePixels + paddedPixels <= MAX_IMAGE_DECODE_BYTES / 4;
+}
 
 const RECODABLE_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
